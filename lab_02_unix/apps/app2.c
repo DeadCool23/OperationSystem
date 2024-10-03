@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <limits.h>
 #include <inttypes.h>
 
@@ -43,17 +44,17 @@ uint32_t to_right_circle(uint32_t num, int n)
 
 int input(uint32_t *a, int *n)
 {
-    printf("Input a, n: ");
+    printf("(PID: %d) Input num, shift: ", getpid());
     //Проверка корректности ввода
     if (scanf("%" SCNu32 "%d", a, n) != 2)
     {
-        printf("Error: Incorrect input\n");
+        printf("(PID: %d) Error: Incorrect input\n", getpid());
         return  ERR_IO;
     }
     //Проверка диапазона числа n
     if (*n < 0)
     {
-        printf("Error: n is negative\n");
+        printf("(PID: %d) Error: n is negative\n", getpid());
         return ERR_RANGE;
     }
     return OK;
@@ -61,7 +62,7 @@ int input(uint32_t *a, int *n)
 
 void bin_out(uint32_t num)
 {
-    printf("Result: ");
+    printf("(PID: %d) Result: ", getpid());
     for (size_t i = 1; i <= BIT_COUNT; i++)
     {
         printf("%" PRIu32, (num >> (BIT_COUNT - i)) & 1);

@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <unistd.h>
 
 #define OK 0
 #define ERR_IO 1
@@ -18,19 +19,19 @@ int deg(int a, int n)
 int main(void)
 {
     int a, n;
-    printf("Input number and degree: ");
+    printf("(PID: %d) Input number and degree: ", getpid());
     //Проверка ввода
     if (scanf("%d%d", &a, &n) != 2)
     {
-        printf("IO error\n");
+        printf("(PID: %d) IO error\n", getpid());
         return ERR_IO;
     }
     if (n <= 0)
     {
-        printf("Error: n is negative\n");
+        printf("(PID: %d) Error: n is negative\n", getpid());
         return ERR_RANGE;
     }
     int ans = deg(a, n); //Присваивание значения ф-ции переменной
-    printf("a^n = %d", ans);
+    printf("(PID: %d) a^n = %d\n", getpid(), ans);
     return OK;
 }

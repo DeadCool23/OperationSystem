@@ -9,24 +9,26 @@
 #define PROC_CNT 3
 #define SLEEP_TIME 3
 
-int main() {
+int main()
+{
 	pid_t childpid[PROC_CNT];
-
-	for (int i = 0; i < PROC_CNT; i++) {
-		if ((childpid[i] = fork()) == -1) {
+	for (int i = 0; i < PROC_CNT; ++i)
+	{
+		if ((childpid[i] = fork()) == -1)
+		{
             printf("Can't fork");
             exit(EXIT_FAILURE);
-        } else if (childpid[i] == 0) {
-			printf("Child[%d]: pid=%d, ppid=%d, gid=%d\n", i, getpid(), getppid(), getpgrp());
-			sleep(SLEEP_TIME);
-
-			printf("After sleep\nChild[%d]: pid=%d, ppid=%d, gid=%d\n", i, getpid(), getppid(), getpgrp());
-			exit(EXIT_SUCCESS);
-		} else {
-			printf("Parent: pid=%d, ppid=%d, childpid=%d, gid=%d\n", getpid(), getppid(), childpid[i],  getpgrp());
         }
+		else if (childpid[i] == 0)
+		{
+			printf("Child: pid=%d, ppid=%d, gid=%d\n", getpid(), getppid(), getpgrp());
+			sleep(SLEEP_TIME);
+			printf("After sleep\nChild: pid=%d, ppid=%d, gid=%d\n", getpid(), getppid(), getpgrp());
+			exit(EXIT_SUCCESS);
+		} 
+		else
+			printf("Parent: pid=%d, ppid=%d, childpid=%d, gid=%d\n", getpid(), getppid(), childpid[i],  getpgrp());
     }
-	
     exit(EXIT_SUCCESS);
 }
 
