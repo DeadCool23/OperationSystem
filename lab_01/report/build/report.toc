@@ -1,3 +1,0 @@
-\babel@toc {russian}{}\relax 
-\contentsline {chapter}{\numberline {1}Листинг кода}{3}{chapter.1}%
-\contentsline {chapter}{\numberline {2}Схемы алгоритмов}{7}{chapter.2}%
