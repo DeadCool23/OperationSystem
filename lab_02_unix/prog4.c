@@ -23,12 +23,14 @@ int main(void)
         sizeof(fst) - 1,
         sizeof(scd) - 1
     };
+    
     int fd[2];
     if (pipe(fd) == -1)
     {
         perror("Can't pipe\n");
         exit(EXIT_FAILURE);
     }
+
     for (size_t i = 0; i < PROC_CNT; ++i)
     {
         if ((childpid[i] = fork()) == -1)
@@ -44,6 +46,7 @@ int main(void)
             exit(EXIT_SUCCESS);
         }
     }
+
     for (size_t i = 0; i < PROC_CNT; ++i)
     {
         int status;
@@ -55,6 +58,7 @@ int main(void)
         else if (WIFSTOPPED(status))
             printf("Child (PID: %d) received signal %d\n", childpid[i], WSTOPSIG(status));
     }
+
     char buf[128];
     for (size_t i = 0; i < PROC_CNT; ++i)
     {
@@ -63,9 +67,10 @@ int main(void)
         buf[str_sizes[i]] = '\0';
         printf("Parent (PID: %d) received message: %s\n", getpid(), buf);
     }
+
     buf[0] = '\0';
     close(fd[1]);
     int read_bytes_cnt = read(fd[0], buf, sizeof(buf) - 1);
-    printf("Parent (PID: %d) recieved messages: %s\n", buf);
+    printf("Parent (PID: %d) recieved messages: %s\n", getpid(), buf);
     exit(EXIT_SUCCESS);
 }
