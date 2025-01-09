@@ -3,7 +3,7 @@ CC := gcc
 CFLAGS :=
 LINKFLAGS :=
 
-PROGNAME := reader_writer.c
+PROGNAME := prog.c
 
 EXEC_EXTENTION := exe
 
