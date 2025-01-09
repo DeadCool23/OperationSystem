@@ -1,11 +1,11 @@
 CC := gcc
 
 CFLAGS :=
-LINKFLAGS := -lpthread -lrt
+LINKFLAGS :=
 
 PROGNAME := reader_writer.c
 
-EXEC_EXTENTION := out
+EXEC_EXTENTION := exe
 
 .PHONY: all
 all: reader_writer

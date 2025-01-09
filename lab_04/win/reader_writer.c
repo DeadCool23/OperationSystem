@@ -1,266 +1,136 @@
-#include <time.h>
-#include <errno.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <signal.h>
-#include <sys/ipc.h>
-#include <sys/sem.h>
-#include <sys/shm.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <unistd.h>
+#include <time.h>
+#include <windows.h>
 
-#define WRITER_CNT 3
-#define READER_CNT 5
+#define WRITERS_CNT 3
+#define READERS_CNT 4
 
-#define READERS_QUEUE 0
-#define ACTIVE_READERS 1
-#define ACTIVE_WRITER 2
-#define WRITERS_QUEUE 3
-#define BIN_WRITER 4
+HANDLE mutex, can_read, can_write;
+HANDLE reader_threads[4], writer_threads[3];
+LONG writers_in_queue = 0, readers_in_queue = 0, active_readers = 0;
+char data = 'a' - 1;
+int fl = 1;
 
-struct sembuf start_read[] =
+void start_read(void)
 {
-    {READERS_QUEUE, 1, 0},
-    {ACTIVE_WRITER, 0, 0}, 
-    {WRITERS_QUEUE, 0, 0}, 
-    {ACTIVE_READERS, 1, 0},
-    {READERS_QUEUE, -1, 0}
-};
-
-struct sembuf stop_read[] =
-{
-    {ACTIVE_READERS, -1, 0}
-};
-
-struct sembuf start_write[] =
-{
-    {WRITERS_QUEUE, 1, 0},
-    {ACTIVE_READERS, 0, 0},
-    {BIN_WRITER, -1, 0}, 
-    {ACTIVE_WRITER, 1, 0},
-    {WRITERS_QUEUE, -1, 0}
-};
-
-struct sembuf stop_write[] =
-{
-    {ACTIVE_WRITER, -1, 0},
-    {BIN_WRITER, 1, 0}
-};
-
-const int PERMS =  S_IRWXU | S_IRWXG | S_IRWXO;
-
-int *shm_buf;
-int sem_id;
-int shm_id;
-
-int flag = 1;
-
-void sig_handler(int sig_num)
-{
-    flag = 0;
-        printf("Process %d catch signal %d\n", getpid(), sig_num);
+    InterlockedIncrement(&readers_in_queue);
+    if (WaitForSingleObject(can_write, 0) == WAIT_OBJECT_0)
+        WaitForSingleObject(can_read, INFINITE);
+    WaitForSingleObject(mutex, INFINITE);
+    InterlockedDecrement(&readers_in_queue);
+    InterlockedIncrement(&active_readers);
+    SetEvent(can_read);
+    ReleaseMutex(mutex);
 }
 
-int reader(int semid, int* shm)
+void stop_read(void)
 {
-    srand(getpid());
-    while(flag)
+    InterlockedDecrement(&active_readers);
+    if (active_readers == 0)
+        SetEvent(can_write);
+}
+
+void start_write(void)
+{
+    InterlockedIncrement(&writers_in_queue);
+    if (active_readers > 0)
+        WaitForSingleObject(can_write, INFINITE);
+    InterlockedDecrement(&writers_in_queue);
+}
+
+void stop_write(void)
+{
+    ResetEvent(can_write);
+    if (readers_in_queue > 0)
+        SetEvent(can_read);
+    else
+        SetEvent(can_write);
+}
+
+DWORD WINAPI read_data(LPVOID ptr)
+{
+    int id = *(int*)ptr;
+    srand(time(NULL) + id);
+    while (fl)
     {
-        sleep(rand() % 2);
-        if (semop(sem_id, start_read, 5) == -1)
-        {
-            printf("semop %d errno: %d\n", getpid(), errno);
-            perror("semop error");
-            exit(1);
-        }
-        
-        char ch = 'a' + (*shm - 1) % 26;
-		printf("Reader %d: %c\n", getpid(), ch);
-
-        if (semop(sem_id, stop_read, 1) == -1)
-        {
-            printf("semop %d errno: %d\n", getpid(), errno);
-            perror("semop error");
-            exit(1);
-        }
+        int stime = rand() % 600 + 500;
+        Sleep(stime);
+        start_read();
+        printf("reader №%d:  %c\n", id + 1, data);
+        stop_read();
     }
-
     return 0;
 }
 
-int writer(int semid, int* shm)
+DWORD WINAPI write_data(LPVOID ptr)
 {
-    srand(getpid());
-    while(flag)
+    int writer_id = *(int*)ptr;
+    srand(time(NULL) + writer_id);
+    while (fl)
     {
-        sleep(rand() % 3);
-        if (semop(sem_id, start_write, 5) == -1)
-        {
-            printf("semop %d errno: %d\n", getpid(), errno);
-            perror("semop error");
-            exit(1);
-        }
+        int stime = rand() % 300 + 500;
+        Sleep(stime);
+        start_write();
 
-        char ch = 'a' + *shm % 26;
-        (*shm)++;
-        printf("Writer %d: %c\n", getpid(), ch);
+        if (data == 'z')
+            data = 'a';
+        else
+            data++;
 
-        if (semop(sem_id, stop_write, 2) == -1)
-        {
-            printf("semop %d errno: %d\n", getpid(), errno);
-            perror("semop error");
-            exit(1);
-        }
+        printf("writer №%d: %c\n", writer_id + 1, data);
+        stop_write();
     }
-
     return 0;
 }
 
-int main()
+int main(void)
 {
-    if (signal(SIGINT, sig_handler) == SIG_ERR)
+    setbuf(stdout, NULL);
+    int readers_id[4], writers_id[3];
+    DWORD id = 0;
+    if ((mutex = CreateMutex(NULL, FALSE, NULL)) == NULL)
     {
-        perror("Can't signal.");
+        perror("Can't CreateMutex.\n");
         exit(1);
     }
-
-    key_t key = ftok("keyf",0);
-    if (key == -1)
+    if ((can_read = CreateEvent(NULL, FALSE, FALSE, NULL)) == NULL)
     {
-        printf("ftok error.");
+        perror("Can't CreateEvent (can_read).\n");
         exit(1);
     }
-
-    if ((shm_id = shmget(key, sizeof(int), IPC_CREAT | PERMS)) == -1)
+    if ((can_write = CreateEvent(NULL, TRUE, FALSE, NULL)) == NULL)
     {
-		perror("shmget error\n");
-		exit(1);
-	}
-
-    shm_buf = shmat(shm_id, NULL, 0);
-    if (shm_buf == (void*) -1)
-    {
-        perror("shmat error\n");
+        perror("Can't CreateEvent (can_write).\n");
         exit(1);
     }
-    (*shm_buf) = 0;
-
-    if ((sem_id = semget(key, 5, IPC_CREAT | PERMS)) == -1)
+    for (int i = 0; i < READERS_CNT; i++)
     {
-		perror("semget error\n");
-		exit(1);
-	}
-
-    if ((semctl(sem_id, READERS_QUEUE, SETVAL, 0)) == -1)
-    {
-        perror("semctl error\n");
-		exit(1);
-    }
-    if ((semctl(sem_id, ACTIVE_READERS, SETVAL, 0)) == -1)
-    {
-        perror("semctl error\n");
-		exit(1);
-    }
-    if ((semctl(sem_id, WRITERS_QUEUE, SETVAL, 0)) == -1)
-    {
-        perror("semctl error\n");
-		exit(1);
-    }
-    if ((semctl(sem_id, ACTIVE_WRITER, SETVAL, 0)) == -1)
-    {
-        perror("semctl error\n");
-		exit(1);
-    }
-    if ((semctl(sem_id, BIN_WRITER, SETVAL, 1)) == -1)
-    {
-        perror("semctl error\n");
-		exit(1);
-    }
-
-    pid_t pid;
-
-	for (int i = 0; i < WRITER_CNT && pid != 0; i++)
-    {
-        pid = fork();
-        if (pid == -1)
+        readers_id[i] = i;
+        if ((reader_threads[i] = CreateThread(NULL, 0, read_data, readers_id + i, 0, &id)) == NULL)
         {
-            perror("fork error\n");
+            perror("Can't CreateThread (reader).\n");
             exit(1);
         }
-
-        if (pid == 0)
-        {
-            writer(sem_id, shm_buf);
-            exit(0);
-        }
-	}
-
-    for (int i = 0; i < READER_CNT && pid != 0; i++)
+    }
+    for (int i = 0; i < WRITERS_CNT; i++)
     {
-        pid = fork();
-        if (pid == -1)
+        writers_id[i] = i;
+        if ((writer_threads[i] = CreateThread(NULL, 0, write_data, writers_id + i, 0, &id)) == NULL)
         {
-            perror("fork error\n");
+            perror("Can't CreateThread (writer).\n");
             exit(1);
         }
-
-        if (pid == 0)
-        {
-            reader(sem_id, shm_buf);
-            exit(0);
-        }
-	}
-
-    int wstatus;
-    for (short i = 0; i < WRITER_CNT + READER_CNT; ++i)
-    {
-        pid_t w = wait(&wstatus);
-        if (w == -1)
-        {
-            perror("wait error");
-
-            switch (errno)
-            {
-                case ECHILD:
-                    fprintf(stderr, "No child processes left to wait for.\n");
-                    break;
-                case EINTR:
-                    fprintf(stderr, "The wait was interrupted by a signal.\n");
-                    break;
-                default:
-                    fprintf(stderr, "Unknown error occurred.\n");
-                    break;
-            }
-            exit(1);
-        }
-
-        if (WIFEXITED(wstatus))
-            printf("Exited %d status=%d\n", w, WEXITSTATUS(wstatus));
-        else if (WIFSIGNALED(wstatus))
-            printf("Killed %d by signal %d\n", w, WTERMSIG(wstatus));
-        else if (WIFSTOPPED(wstatus))
-            printf("Stopped %d by signal %d\n", w, WSTOPSIG(wstatus));
     }
 
-    if (shmdt((void *)shm_buf) == -1)
-    {
-        perror("shmdt error");
-        exit(1);
-    }
+    WaitForMultipleObjects(4, reader_threads, TRUE, INFINITE);
+    WaitForMultipleObjects(3, writer_threads, TRUE, INFINITE);
 
-    if (shmctl(shm_id, IPC_RMID, NULL) == -1)
-    {
-        perror("shmctl error");
-        exit(1);
-    }
-
-    if (semctl(sem_id, IPC_RMID, 0) == -1)
-    {
-        perror("semctl error");
-        exit(1);
-    }
-
-    exit(0);
+    for (int i = 0; i < 4; i++)
+        CloseHandle(reader_threads[i]);
+    for (int i = 0; i < 3; i++)
+        CloseHandle(writer_threads[i]);
+    CloseHandle(can_read);
+    CloseHandle(can_write);
+    CloseHandle(mutex);
+    return 0;
 }
